@@ -18,18 +18,29 @@ export interface AdsgramResult {
   reward?: number;
 }
 
-export const showAdsgram = async (blockId: string): Promise<AdsgramResult> => {
+export const showAdsgram = async (blockId: string, useDemoMode: boolean = false): Promise<AdsgramResult> => {
+  if (useDemoMode) {
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        resolve({
+          success: true,
+          reward: 0.000281
+        });
+      }, 2000);
+    });
+  }
+
   if (!window.Adsgram) {
     return {
       success: false,
-      error: 'Adsgram SDK not loaded'
+      error: 'Adsgram SDK не загружен. Используйте демо-режим для тестирования.'
     };
   }
 
   try {
     const AdController = window.Adsgram.init({ 
       blockId,
-      debug: false
+      debug: true
     });
 
     const result = await AdController.show();
@@ -42,13 +53,20 @@ export const showAdsgram = async (blockId: string): Promise<AdsgramResult> => {
     } else {
       return {
         success: false,
-        error: `Ad not completed: ${result.description}`
+        error: `Реклама не досмотрена: ${result.description}`
       };
     }
-  } catch (error) {
+  } catch (error: any) {
+    if (error?.message?.includes('no ads') || error?.toString().includes('no ads')) {
+      return {
+        success: false,
+        error: 'В данный момент нет доступных объявлений. Попробуйте позже или используйте демо-режим.'
+      };
+    }
+    
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Неизвестная ошибка при показе рекламы'
     };
   }
 };

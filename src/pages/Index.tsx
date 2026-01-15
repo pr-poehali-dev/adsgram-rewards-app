@@ -25,6 +25,7 @@ const Index = () => {
   const [isWatchingAd, setIsWatchingAd] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [telegramId, setTelegramId] = useState<number | null>(null);
+  const [demoMode, setDemoMode] = useState(false);
 
   const REWARD_AMOUNT = 0.000281;
   const BOT_USERNAME = 'adearntask_bot';
@@ -124,7 +125,7 @@ const Index = () => {
     hapticFeedback('medium');
     
     try {
-      const result = await showAdsgram(ADSGRAM_BLOCK_ID);
+      const result = await showAdsgram(ADSGRAM_BLOCK_ID, demoMode);
       
       if (result.success) {
         const updatedUser = await addAdReward(telegramId, REWARD_AMOUNT, ADSGRAM_BLOCK_ID);
@@ -132,11 +133,25 @@ const Index = () => {
         
         hapticFeedback('success');
         toast.success(`+${REWARD_AMOUNT} TON начислено!`, {
-          description: 'Продолжай смотреть рекламу для заработка'
+          description: demoMode ? 'Демо-режим: награда начислена' : 'Продолжай смотреть рекламу для заработка'
         });
       } else {
         hapticFeedback('error');
-        toast.error('Реклама не была досмотрена до конца');
+        
+        if (result.error?.includes('нет доступных объявлений')) {
+          toast.error(result.error, {
+            description: 'Включите демо-режим в настройках',
+            action: {
+              label: 'Включить демо',
+              onClick: () => {
+                setDemoMode(true);
+                toast.success('Демо-режим включен!');
+              }
+            }
+          });
+        } else {
+          toast.error(result.error || 'Реклама не была досмотрена до конца');
+        }
       }
     } catch (error) {
       hapticFeedback('error');
@@ -264,6 +279,32 @@ const Index = () => {
                     Получай бонусы за каждого приглашенного друга
                   </p>
                 </div>
+              </div>
+            </Card>
+
+            <Card className="p-4 bg-amber-50 dark:bg-amber-950/20 border-amber-200">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Icon name={demoMode ? "CheckCircle2" : "AlertCircle"} className={`w-5 h-5 ${demoMode ? 'text-success' : 'text-amber-600'}`} />
+                  <div>
+                    <p className="text-sm font-medium">Демо-режим</p>
+                    <p className="text-xs text-muted-foreground">
+                      {demoMode ? 'Включен' : 'Если нет рекламы'}
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  variant={demoMode ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => {
+                    setDemoMode(!demoMode);
+                    hapticFeedback('light');
+                    toast.success(demoMode ? 'Демо-режим выключен' : 'Демо-режим включен');
+                  }}
+                  className="touch-manipulation"
+                >
+                  {demoMode ? 'Выкл' : 'Вкл'}
+                </Button>
               </div>
             </Card>
           </div>
