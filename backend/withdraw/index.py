@@ -2,9 +2,10 @@ import json
 import os
 import psycopg2
 from decimal import Decimal
+from ton_sender import send_ton_sync
 
 def handler(event: dict, context) -> dict:
-    """API для обработки выводов средств на TON кошелек"""
+    """API для обработки выводов средств на TON кошелек с автоматической отправкой"""
     
     method = event.get('httpMethod', 'GET')
     
@@ -100,7 +101,7 @@ def handler(event: dict, context) -> dict:
             
             cur.execute("""
                 INSERT INTO withdrawals (user_id, amount, wallet_address, status, transaction_id)
-                VALUES (%s, %s, %s, 'pending', %s)
+                VALUES (%s, %s, %s, 'processing', %s)
                 RETURNING id
             """, (telegram_id, amount, wallet_address, transaction_id))
             
@@ -108,19 +109,60 @@ def handler(event: dict, context) -> dict:
             
             conn.commit()
             
-            return {
-                'statusCode': 200,
-                'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-                'body': json.dumps({
-                    'success': True,
-                    'withdrawal_id': withdrawal_id,
-                    'new_balance': float(new_balance),
-                    'amount': float(amount),
-                    'wallet': wallet_address,
-                    'message': 'Запрос на вывод создан. Обработка в течение 24 часов.'
-                }),
-                'isBase64Encoded': False
-            }
+            try:
+                ton_result = send_ton_sync(wallet_address, float(amount))
+                
+                cur.execute("""
+                    UPDATE withdrawals 
+                    SET status = 'completed',
+                        processed_at = CURRENT_TIMESTAMP,
+                        tx_hash = %s
+                    WHERE id = %s
+                """, (ton_result['tx_hash'], withdrawal_id))
+                
+                conn.commit()
+                
+                return {
+                    'statusCode': 200,
+                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({
+                        'success': True,
+                        'withdrawal_id': withdrawal_id,
+                        'new_balance': float(new_balance),
+                        'amount': float(amount),
+                        'wallet': wallet_address,
+                        'tx_hash': ton_result['tx_hash'],
+                        'message': 'TON успешно отправлены на ваш кошелек!'
+                    }),
+                    'isBase64Encoded': False
+                }
+                
+            except Exception as send_error:
+                cur.execute("""
+                    UPDATE withdrawals 
+                    SET status = 'failed'
+                    WHERE id = %s
+                """, (withdrawal_id,))
+                
+                cur.execute("""
+                    UPDATE users 
+                    SET balance = balance + %s,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE telegram_id = %s
+                """, (amount, telegram_id))
+                
+                conn.commit()
+                
+                return {
+                    'statusCode': 500,
+                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({
+                        'success': False,
+                        'error': f'Ошибка отправки TON: {str(send_error)}',
+                        'balance_restored': True
+                    }),
+                    'isBase64Encoded': False
+                }
         
         elif method == 'GET' and path.startswith('history/'):
             telegram_id = int(path.split('/')[-1])
