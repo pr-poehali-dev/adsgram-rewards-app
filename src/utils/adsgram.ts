@@ -24,7 +24,7 @@ export const showAdsgram = async (blockId: string, useDemoMode: boolean = false)
       setTimeout(() => {
         resolve({
           success: true,
-          reward: 0.000281
+          reward: 0.001
         });
       }, 2000);
     });
@@ -40,7 +40,7 @@ export const showAdsgram = async (blockId: string, useDemoMode: boolean = false)
   try {
     const AdController = window.Adsgram.init({ 
       blockId,
-      debug: true
+      debug: false
     });
 
     const result = await AdController.show();
@@ -48,7 +48,7 @@ export const showAdsgram = async (blockId: string, useDemoMode: boolean = false)
     if (result.done) {
       return {
         success: true,
-        reward: 0.000281
+        reward: 0.001
       };
     } else {
       return {

@@ -9,6 +9,54 @@ import { initUser, getUser, addAdReward, getTransactions, getReferrals, type Use
 
 type Screen = 'home' | 'profile' | 'wallet';
 
+const CountdownTimer = () => {
+  const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+
+  useEffect(() => {
+    const targetDate = new Date();
+    targetDate.setMonth(targetDate.getMonth() + 1);
+
+    const updateTimer = () => {
+      const now = new Date().getTime();
+      const distance = targetDate.getTime() - now;
+
+      if (distance > 0) {
+        setTimeLeft({
+          days: Math.floor(distance / (1000 * 60 * 60 * 24)),
+          hours: Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
+          minutes: Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60)),
+          seconds: Math.floor((distance % (1000 * 60)) / 1000)
+        });
+      }
+    };
+
+    updateTimer();
+    const interval = setInterval(updateTimer, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div className="flex gap-4 text-white">
+      <div className="text-center">
+        <div className="text-3xl font-bold bg-white/10 rounded-lg px-4 py-2 min-w-[70px]">{timeLeft.days}</div>
+        <div className="text-xs mt-1 opacity-80">дней</div>
+      </div>
+      <div className="text-center">
+        <div className="text-3xl font-bold bg-white/10 rounded-lg px-4 py-2 min-w-[70px]">{timeLeft.hours}</div>
+        <div className="text-xs mt-1 opacity-80">часов</div>
+      </div>
+      <div className="text-center">
+        <div className="text-3xl font-bold bg-white/10 rounded-lg px-4 py-2 min-w-[70px]">{timeLeft.minutes}</div>
+        <div className="text-xs mt-1 opacity-80">минут</div>
+      </div>
+      <div className="text-center">
+        <div className="text-3xl font-bold bg-white/10 rounded-lg px-4 py-2 min-w-[70px]">{timeLeft.seconds}</div>
+        <div className="text-xs mt-1 opacity-80">секунд</div>
+      </div>
+    </div>
+  );
+};
+
 interface Transaction {
   id: number;
   amount: number;
@@ -27,7 +75,8 @@ const Index = () => {
   const [telegramId, setTelegramId] = useState<number | null>(null);
   const [demoMode, setDemoMode] = useState(false);
 
-  const REWARD_AMOUNT = 0.000281;
+  const REWARD_AMOUNT = 0.001;
+  const MIN_WITHDRAWAL = 1;
   const BOT_USERNAME = 'adearntask_bot';
   const ADSGRAM_BLOCK_ID = '21184';
 
@@ -132,7 +181,7 @@ const Index = () => {
         setUserData(updatedUser);
         
         hapticFeedback('success');
-        toast.success(`+${REWARD_AMOUNT} TON начислено!`, {
+        toast.success(`+${REWARD_AMOUNT} USDT начислено!`, {
           description: demoMode ? 'Демо-режим: награда начислена' : 'Продолжай смотреть рекламу для заработка'
         });
       } else {
@@ -172,9 +221,9 @@ const Index = () => {
   };
 
   const handleWithdraw = () => {
-    if (!userData || userData.balance < 0.001) {
+    if (!userData || userData.balance < MIN_WITHDRAWAL) {
       hapticFeedback('error');
-      toast.error('Минимальная сумма для вывода: 0.001 TON');
+      toast.error(`Минимальная сумма для вывода: ${MIN_WITHDRAWAL} USDT`);
       return;
     }
     hapticFeedback('success');
@@ -210,8 +259,8 @@ const Index = () => {
           <div className="bg-gradient-to-br from-primary to-primary/80 text-white p-6 rounded-b-3xl shadow-lg">
             <div className="text-center space-y-2">
               <p className="text-sm opacity-90 font-medium">Ваш баланс</p>
-              <h1 className="text-5xl font-bold tracking-tight">{userData.balance.toFixed(6)}</h1>
-              <p className="text-lg opacity-90">TON</p>
+              <h1 className="text-5xl font-bold tracking-tight">{userData.balance.toFixed(3)}</h1>
+              <p className="text-lg opacity-90">USDT</p>
             </div>
           </div>
 
@@ -231,8 +280,8 @@ const Index = () => {
               
               <Card className="p-4 text-center">
                 <Icon name="TrendingUp" className="w-6 h-6 mx-auto mb-2 text-success" />
-                <p className="text-2xl font-bold">{userData.total_earned.toFixed(4)}</p>
-                <p className="text-xs text-muted-foreground mt-1">Всего TON</p>
+                <p className="text-2xl font-bold">{userData.total_earned.toFixed(3)}</p>
+                <p className="text-xs text-muted-foreground mt-1">Всего USDT</p>
               </Card>
             </div>
 
@@ -241,7 +290,7 @@ const Index = () => {
                 <div className="space-y-2">
                   <h2 className="text-xl font-semibold">Смотри и зарабатывай</h2>
                   <p className="text-sm text-muted-foreground">
-                    Получай <span className="font-bold text-success">{REWARD_AMOUNT} TON</span> за каждый просмотр
+                    Получай <span className="font-bold text-success">{REWARD_AMOUNT} USDT</span> за каждый просмотр
                   </p>
                 </div>
                 
@@ -341,7 +390,7 @@ const Index = () => {
               </div>
               <div className="flex justify-between items-center py-3">
                 <span className="text-muted-foreground">Всего заработано</span>
-                <span className="font-semibold text-success">{userData.total_earned.toFixed(6)} TON</span>
+                <span className="font-semibold text-success">{userData.total_earned.toFixed(3)} USDT</span>
               </div>
             </div>
           </Card>
@@ -376,7 +425,7 @@ const Index = () => {
                         {ref.username ? `@${ref.username}` : `ID: ${ref.telegram_id}`}
                       </p>
                     </div>
-                    <p className="text-sm font-bold text-success">+{ref.bonus_earned.toFixed(6)} TON</p>
+                    <p className="text-sm font-bold text-success">+{ref.bonus_earned.toFixed(3)} USDT</p>
                   </div>
                 ))}
               </div>
@@ -389,9 +438,13 @@ const Index = () => {
         <div className="px-6 py-8 animate-fade-in">
           <h1 className="text-3xl font-bold mb-6">Кошелек</h1>
           
-          <Card className="p-6 mb-6 bg-gradient-to-br from-primary to-primary/80 text-white">
+          <Card className="p-6 mb-6 bg-gradient-to-br from-primary to-primary/80 text-white relative overflow-hidden">
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex flex-col items-center justify-center z-10">
+              <h2 className="text-4xl font-bold mb-4" style={{ fontFamily: 'Georgia, serif', letterSpacing: '0.05em' }}>COMING SOON</h2>
+              <CountdownTimer />
+            </div>
             <p className="text-sm opacity-90 mb-2">Доступно для вывода</p>
-            <p className="text-4xl font-bold mb-4">{userData.balance.toFixed(6)} TON</p>
+            <p className="text-4xl font-bold mb-4">{userData.balance.toFixed(3)} USDT</p>
             <Button 
               onClick={handleWithdraw}
               variant="secondary"
@@ -430,7 +483,7 @@ const Index = () => {
                           <p className="text-xs text-muted-foreground">{formatDate(tx.timestamp)}</p>
                         </div>
                       </div>
-                      <p className="font-bold text-success">+{tx.amount.toFixed(6)}</p>
+                      <p className="font-bold text-success">+{tx.amount.toFixed(3)}</p>
                     </div>
                   </Card>
                 ))}
