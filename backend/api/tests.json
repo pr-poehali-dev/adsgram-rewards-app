@@ -1,0 +1,48 @@
+{
+  "tests": [
+    {
+      "name": "Initialize new user",
+      "method": "POST",
+      "path": "/?path=user/init",
+      "body": {
+        "telegram_id": 123456789,
+        "username": "testuser",
+        "first_name": "Test",
+        "last_name": "User"
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "telegram_id": 123456789,
+        "balance": 0.0,
+        "total_earned": 0.0,
+        "ads_watched": 0
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Get user data",
+      "method": "GET",
+      "path": "/?path=user/123456789",
+      "expectedStatus": 200,
+      "expectedBody": {
+        "telegram_id": 123456789
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Add ad reward",
+      "method": "POST",
+      "path": "/?path=ad/reward",
+      "body": {
+        "telegram_id": 123456789,
+        "reward_amount": "0.000281",
+        "block_id": "20933"
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "reward_added": 0.000281
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}

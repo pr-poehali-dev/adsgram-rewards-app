@@ -1,83 +1,192 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import Icon from '@/components/ui/icon';
 import { toast } from 'sonner';
+import { initTelegramWebApp, getTelegramUser, getStartParam, hapticFeedback, isTelegramWebApp } from '@/utils/telegram';
+import { showAdsgram } from '@/utils/adsgram';
+import { initUser, getUser, addAdReward, getTransactions, getReferrals, type User, type Transaction as ApiTransaction } from '@/utils/api';
 
 type Screen = 'home' | 'profile' | 'wallet';
 
 interface Transaction {
-  id: string;
+  id: number;
   amount: number;
-  type: 'watch' | 'referral';
-  timestamp: Date;
+  type: string;
+  description: string;
+  timestamp: string;
 }
 
 const Index = () => {
   const [currentScreen, setCurrentScreen] = useState<Screen>('home');
-  const [balance, setBalance] = useState(0);
-  const [totalEarned, setTotalEarned] = useState(0);
-  const [adsWatched, setAdsWatched] = useState(0);
-  const [referrals, setReferrals] = useState(0);
+  const [userData, setUserData] = useState<User | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [referralsList, setReferralsList] = useState<any[]>([]);
   const [isWatchingAd, setIsWatchingAd] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [telegramId, setTelegramId] = useState<number | null>(null);
 
   const REWARD_AMOUNT = 0.000281;
   const BOT_USERNAME = 'adearntask_bot';
   const ADSGRAM_BLOCK_ID = '20933';
 
-  const handleWatchAd = () => {
-    setIsWatchingAd(true);
+  useEffect(() => {
+    const init = async () => {
+      initTelegramWebApp();
+      
+      const tgUser = getTelegramUser();
+      const startParam = getStartParam();
+      
+      let userId: number;
+      let referrerId: number | undefined;
+      
+      if (tgUser) {
+        userId = tgUser.id;
+        
+        if (startParam && startParam.startsWith('ref_')) {
+          referrerId = parseInt(startParam.replace('ref_', ''));
+        }
+        
+        try {
+          const user = await initUser(
+            userId,
+            tgUser.username,
+            tgUser.first_name,
+            tgUser.last_name,
+            referrerId
+          );
+          setUserData(user);
+          setTelegramId(userId);
+        } catch (error) {
+          console.error('Failed to init user:', error);
+          toast.error('Ошибка инициализации пользователя');
+        }
+      } else {
+        userId = 123456789;
+        setTelegramId(userId);
+        
+        try {
+          const user = await getUser(userId);
+          setUserData(user);
+        } catch {
+          const user = await initUser(userId, 'demo_user', 'Demo', 'User');
+          setUserData(user);
+        }
+      }
+      
+      setIsLoading(false);
+    };
     
-    setTimeout(() => {
-      const newBalance = balance + REWARD_AMOUNT;
-      const newTotal = totalEarned + REWARD_AMOUNT;
-      const newAdsCount = adsWatched + 1;
+    init();
+  }, []);
+
+  const loadTransactions = async () => {
+    if (!telegramId) return;
+    
+    try {
+      const txs = await getTransactions(telegramId);
+      setTransactions(txs);
+    } catch (error) {
+      console.error('Failed to load transactions:', error);
+    }
+  };
+
+  const loadReferrals = async () => {
+    if (!telegramId) return;
+    
+    try {
+      const refs = await getReferrals(telegramId);
+      setReferralsList(refs);
+    } catch (error) {
+      console.error('Failed to load referrals:', error);
+    }
+  };
+
+  useEffect(() => {
+    if (currentScreen === 'wallet' && telegramId) {
+      loadTransactions();
+    }
+  }, [currentScreen, telegramId]);
+
+  useEffect(() => {
+    if (currentScreen === 'profile' && telegramId) {
+      loadReferrals();
+    }
+  }, [currentScreen, telegramId]);
+
+  const handleWatchAd = async () => {
+    if (!telegramId) {
+      toast.error('Пользователь не авторизован');
+      return;
+    }
+    
+    setIsWatchingAd(true);
+    hapticFeedback('medium');
+    
+    try {
+      const result = await showAdsgram(ADSGRAM_BLOCK_ID);
       
-      setBalance(parseFloat(newBalance.toFixed(6)));
-      setTotalEarned(parseFloat(newTotal.toFixed(6)));
-      setAdsWatched(newAdsCount);
-      
-      const newTransaction: Transaction = {
-        id: Date.now().toString(),
-        amount: REWARD_AMOUNT,
-        type: 'watch',
-        timestamp: new Date()
-      };
-      
-      setTransactions([newTransaction, ...transactions]);
+      if (result.success) {
+        const updatedUser = await addAdReward(telegramId, REWARD_AMOUNT, ADSGRAM_BLOCK_ID);
+        setUserData(updatedUser);
+        
+        hapticFeedback('success');
+        toast.success(`+${REWARD_AMOUNT} TON начислено!`, {
+          description: 'Продолжай смотреть рекламу для заработка'
+        });
+      } else {
+        hapticFeedback('error');
+        toast.error('Реклама не была досмотрена до конца');
+      }
+    } catch (error) {
+      hapticFeedback('error');
+      toast.error('Ошибка при показе рекламы');
+      console.error('Ad error:', error);
+    } finally {
       setIsWatchingAd(false);
-      
-      toast.success(`+${REWARD_AMOUNT} TON начислено!`, {
-        description: 'Продолжай смотреть рекламу для заработка'
-      });
-    }, 3000);
+    }
   };
 
   const copyReferralLink = () => {
-    const referralLink = `https://t.me/${BOT_USERNAME}?start=ref_${Date.now()}`;
+    if (!telegramId) return;
+    
+    const referralLink = `https://t.me/${BOT_USERNAME}?start=ref_${telegramId}`;
     navigator.clipboard.writeText(referralLink);
+    hapticFeedback('success');
     toast.success('Реферальная ссылка скопирована!');
   };
 
   const handleWithdraw = () => {
-    if (balance < 0.001) {
+    if (!userData || userData.balance < 0.001) {
+      hapticFeedback('error');
       toast.error('Минимальная сумма для вывода: 0.001 TON');
       return;
     }
+    hapticFeedback('success');
     toast.success('Запрос на вывод отправлен!', {
       description: 'Средства поступят на ваш кошелек в течение 24 часов'
     });
   };
 
-  const formatDate = (date: Date) => {
+  const formatDate = (dateString: string) => {
     return new Intl.DateTimeFormat('ru-RU', {
       day: '2-digit',
       month: '2-digit',
       hour: '2-digit',
       minute: '2-digit'
-    }).format(date);
+    }).format(new Date(dateString));
   };
+
+  if (isLoading || !userData) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center space-y-4">
+          <Icon name="Loader2" className="w-12 h-12 mx-auto animate-spin text-primary" />
+          <p className="text-muted-foreground">Загрузка...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background pb-20 safe-area-inset">
@@ -86,7 +195,7 @@ const Index = () => {
           <div className="bg-gradient-to-br from-primary to-primary/80 text-white p-6 rounded-b-3xl shadow-lg">
             <div className="text-center space-y-2">
               <p className="text-sm opacity-90 font-medium">Ваш баланс</p>
-              <h1 className="text-5xl font-bold tracking-tight">{balance.toFixed(6)}</h1>
+              <h1 className="text-5xl font-bold tracking-tight">{userData.balance.toFixed(6)}</h1>
               <p className="text-lg opacity-90">TON</p>
             </div>
           </div>
@@ -95,19 +204,19 @@ const Index = () => {
             <div className="grid grid-cols-3 gap-3">
               <Card className="p-4 text-center">
                 <Icon name="Eye" className="w-6 h-6 mx-auto mb-2 text-primary" />
-                <p className="text-2xl font-bold">{adsWatched}</p>
+                <p className="text-2xl font-bold">{userData.ads_watched}</p>
                 <p className="text-xs text-muted-foreground mt-1">Просмотров</p>
               </Card>
               
               <Card className="p-4 text-center">
                 <Icon name="Users" className="w-6 h-6 mx-auto mb-2 text-primary" />
-                <p className="text-2xl font-bold">{referrals}</p>
+                <p className="text-2xl font-bold">{userData.referrals_count}</p>
                 <p className="text-xs text-muted-foreground mt-1">Рефералов</p>
               </Card>
               
               <Card className="p-4 text-center">
                 <Icon name="TrendingUp" className="w-6 h-6 mx-auto mb-2 text-success" />
-                <p className="text-2xl font-bold">{totalEarned.toFixed(4)}</p>
+                <p className="text-2xl font-bold">{userData.total_earned.toFixed(4)}</p>
                 <p className="text-xs text-muted-foreground mt-1">Всего TON</p>
               </Card>
             </div>
@@ -171,28 +280,32 @@ const Index = () => {
                 <Icon name="User" className="w-8 h-8 text-primary" />
               </div>
               <div>
-                <h2 className="text-xl font-semibold">Пользователь</h2>
-                <p className="text-sm text-muted-foreground">ID: {Date.now().toString().slice(-8)}</p>
+                <h2 className="text-xl font-semibold">
+                  {userData.first_name} {userData.last_name || ''}
+                </h2>
+                <p className="text-sm text-muted-foreground">
+                  {userData.username ? `@${userData.username}` : `ID: ${userData.telegram_id}`}
+                </p>
               </div>
             </div>
 
             <div className="space-y-4">
               <div className="flex justify-between items-center py-3 border-b">
                 <span className="text-muted-foreground">Просмотров рекламы</span>
-                <span className="font-semibold">{adsWatched}</span>
+                <span className="font-semibold">{userData.ads_watched}</span>
               </div>
               <div className="flex justify-between items-center py-3 border-b">
                 <span className="text-muted-foreground">Приглашено друзей</span>
-                <span className="font-semibold">{referrals}</span>
+                <span className="font-semibold">{userData.referrals_count}</span>
               </div>
               <div className="flex justify-between items-center py-3">
                 <span className="text-muted-foreground">Всего заработано</span>
-                <span className="font-semibold text-success">{totalEarned.toFixed(6)} TON</span>
+                <span className="font-semibold text-success">{userData.total_earned.toFixed(6)} TON</span>
               </div>
             </div>
           </Card>
 
-          <Card className="p-6">
+          <Card className="p-6 mb-6">
             <div className="flex items-center gap-3 mb-4">
               <Icon name="Gift" className="w-6 h-6 text-primary" />
               <h3 className="text-lg font-semibold">Реферальная программа</h3>
@@ -205,11 +318,28 @@ const Index = () => {
             <Button 
               onClick={copyReferralLink}
               variant="outline" 
-              className="w-full touch-manipulation"
+              className="w-full touch-manipulation mb-4"
             >
               <Icon name="Copy" className="w-4 h-4 mr-2" />
               Скопировать реферальную ссылку
             </Button>
+
+            {referralsList.length > 0 && (
+              <div className="mt-4 space-y-2">
+                <p className="text-sm font-medium">Ваши рефералы:</p>
+                {referralsList.map((ref) => (
+                  <div key={ref.telegram_id} className="flex justify-between items-center p-3 bg-muted/30 rounded-lg">
+                    <div>
+                      <p className="font-medium text-sm">{ref.first_name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {ref.username ? `@${ref.username}` : `ID: ${ref.telegram_id}`}
+                      </p>
+                    </div>
+                    <p className="text-sm font-bold text-success">+{ref.bonus_earned.toFixed(6)} TON</p>
+                  </div>
+                ))}
+              </div>
+            )}
           </Card>
         </div>
       )}
@@ -220,7 +350,7 @@ const Index = () => {
           
           <Card className="p-6 mb-6 bg-gradient-to-br from-primary to-primary/80 text-white">
             <p className="text-sm opacity-90 mb-2">Доступно для вывода</p>
-            <p className="text-4xl font-bold mb-4">{balance.toFixed(6)} TON</p>
+            <p className="text-4xl font-bold mb-4">{userData.balance.toFixed(6)} TON</p>
             <Button 
               onClick={handleWithdraw}
               variant="secondary"
@@ -245,19 +375,17 @@ const Index = () => {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                          tx.type === 'watch' ? 'bg-success/10' : 'bg-primary/10'
+                          tx.type === 'ad_view' ? 'bg-success/10' : 'bg-primary/10'
                         }`}>
                           <Icon 
-                            name={tx.type === 'watch' ? 'Eye' : 'Users'} 
+                            name={tx.type === 'ad_view' ? 'Eye' : 'Users'} 
                             className={`w-5 h-5 ${
-                              tx.type === 'watch' ? 'text-success' : 'text-primary'
+                              tx.type === 'ad_view' ? 'text-success' : 'text-primary'
                             }`}
                           />
                         </div>
                         <div>
-                          <p className="font-medium">
-                            {tx.type === 'watch' ? 'Просмотр рекламы' : 'Реферальный бонус'}
-                          </p>
+                          <p className="font-medium">{tx.description}</p>
                           <p className="text-xs text-muted-foreground">{formatDate(tx.timestamp)}</p>
                         </div>
                       </div>
@@ -274,7 +402,10 @@ const Index = () => {
       <nav className="fixed bottom-0 left-0 right-0 bg-card border-t shadow-lg safe-area-inset">
         <div className="flex justify-around items-center h-16">
           <button
-            onClick={() => setCurrentScreen('home')}
+            onClick={() => {
+              setCurrentScreen('home');
+              hapticFeedback('light');
+            }}
             className={`flex flex-col items-center gap-1 px-6 py-2 touch-manipulation transition-colors ${
               currentScreen === 'home' ? 'text-primary' : 'text-muted-foreground'
             }`}
@@ -284,7 +415,10 @@ const Index = () => {
           </button>
           
           <button
-            onClick={() => setCurrentScreen('profile')}
+            onClick={() => {
+              setCurrentScreen('profile');
+              hapticFeedback('light');
+            }}
             className={`flex flex-col items-center gap-1 px-6 py-2 touch-manipulation transition-colors ${
               currentScreen === 'profile' ? 'text-primary' : 'text-muted-foreground'
             }`}
@@ -294,7 +428,10 @@ const Index = () => {
           </button>
           
           <button
-            onClick={() => setCurrentScreen('wallet')}
+            onClick={() => {
+              setCurrentScreen('wallet');
+              hapticFeedback('light');
+            }}
             className={`flex flex-col items-center gap-1 px-6 py-2 touch-manipulation transition-colors ${
               currentScreen === 'wallet' ? 'text-primary' : 'text-muted-foreground'
             }`}
