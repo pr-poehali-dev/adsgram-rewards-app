@@ -29,7 +29,7 @@ const Index = () => {
 
   const REWARD_AMOUNT = 0.000281;
   const BOT_USERNAME = 'adearntask_bot';
-  const ADSGRAM_BLOCK_ID = '20148';
+  const ADSGRAM_BLOCK_ID = '21184';
 
   useEffect(() => {
     const init = async () => {
