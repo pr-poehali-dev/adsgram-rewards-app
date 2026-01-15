@@ -3,11 +3,9 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import Icon from '@/components/ui/icon';
 import { toast } from 'sonner';
-import { useTonConnectUI, useTonAddress } from '@tonconnect/ui-react';
 import { initTelegramWebApp, getTelegramUser, getStartParam, hapticFeedback, isTelegramWebApp } from '@/utils/telegram';
 import { showAdsgram } from '@/utils/adsgram';
 import { initUser, getUser, addAdReward, getTransactions, getReferrals, type User, type Transaction as ApiTransaction } from '@/utils/api';
-import { requestWithdrawal, getWithdrawalHistory, type Withdrawal } from '@/utils/withdrawal';
 
 type Screen = 'home' | 'profile' | 'wallet';
 
@@ -24,20 +22,14 @@ const Index = () => {
   const [userData, setUserData] = useState<User | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [referralsList, setReferralsList] = useState<any[]>([]);
-  const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([]);
   const [isWatchingAd, setIsWatchingAd] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [telegramId, setTelegramId] = useState<number | null>(null);
   const [demoMode, setDemoMode] = useState(false);
-  const [isWithdrawing, setIsWithdrawing] = useState(false);
-
-  const [tonConnectUI] = useTonConnectUI();
-  const walletAddress = useTonAddress();
 
   const REWARD_AMOUNT = 0.000281;
   const BOT_USERNAME = 'adearntask_bot';
   const ADSGRAM_BLOCK_ID = '21184';
-  const MIN_WITHDRAWAL = 0.5;
 
   useEffect(() => {
     const init = async () => {
@@ -111,21 +103,9 @@ const Index = () => {
     }
   };
 
-  const loadWithdrawals = async () => {
-    if (!telegramId) return;
-    
-    try {
-      const history = await getWithdrawalHistory(telegramId);
-      setWithdrawals(history);
-    } catch (error) {
-      console.error('Failed to load withdrawals:', error);
-    }
-  };
-
   useEffect(() => {
     if (currentScreen === 'wallet' && telegramId) {
       loadTransactions();
-      loadWithdrawals();
     }
   }, [currentScreen, telegramId]);
 
@@ -191,72 +171,16 @@ const Index = () => {
     toast.success('Реферальная ссылка скопирована!');
   };
 
-  const handleConnectWallet = async () => {
-    if (!tonConnectUI) return;
-    
-    try {
-      hapticFeedback('medium');
-      await tonConnectUI.openModal();
-    } catch (error) {
-      console.error('Failed to connect wallet:', error);
-      toast.error('Ошибка подключения кошелька');
-    }
-  };
-
-  const handleWithdraw = async () => {
-    if (!userData || !telegramId) {
-      toast.error('Пользователь не авторизован');
+  const handleWithdraw = () => {
+    if (!userData || userData.balance < 0.001) {
+      hapticFeedback('error');
+      toast.error('Минимальная сумма для вывода: 0.001 TON');
       return;
     }
-
-    if (!walletAddress) {
-      hapticFeedback('error');
-      toast.error('Подключите TON кошелек', {
-        action: {
-          label: 'Подключить',
-          onClick: handleConnectWallet
-        }
-      });
-      return;
-    }
-
-    if (userData.balance < MIN_WITHDRAWAL) {
-      hapticFeedback('error');
-      toast.error(`Минимальная сумма для вывода: ${MIN_WITHDRAWAL} TON`, {
-        description: `Ваш баланс: ${userData.balance.toFixed(6)} TON`
-      });
-      return;
-    }
-
-    setIsWithdrawing(true);
-    hapticFeedback('medium');
-
-    try {
-      const result = await requestWithdrawal(
-        telegramId,
-        walletAddress,
-        userData.balance
-      );
-
-      if (result.success) {
-        setUserData({
-          ...userData,
-          balance: result.new_balance || 0
-        });
-
-        hapticFeedback('success');
-        toast.success('Запрос на вывод создан!', {
-          description: result.message || 'Обработка в течение 24 часов'
-        });
-
-        await loadWithdrawals();
-      }
-    } catch (error: any) {
-      hapticFeedback('error');
-      toast.error(error.message || 'Ошибка при создании запроса на вывод');
-    } finally {
-      setIsWithdrawing(false);
-    }
+    hapticFeedback('success');
+    toast.success('Запрос на вывод отправлен!', {
+      description: 'Средства поступят на ваш кошелек в течение 24 часов'
+    });
   };
 
   const formatDate = (dateString: string) => {
@@ -468,90 +392,15 @@ const Index = () => {
           <Card className="p-6 mb-6 bg-gradient-to-br from-primary to-primary/80 text-white">
             <p className="text-sm opacity-90 mb-2">Доступно для вывода</p>
             <p className="text-4xl font-bold mb-4">{userData.balance.toFixed(6)} TON</p>
-            
-            {!walletAddress ? (
-              <Button 
-                onClick={handleConnectWallet}
-                variant="secondary"
-                className="w-full touch-manipulation"
-              >
-                <Icon name="Wallet" className="w-4 h-4 mr-2" />
-                Подключить TON кошелек
-              </Button>
-            ) : (
-              <div className="space-y-3">
-                <div className="bg-white/10 rounded-lg p-3">
-                  <p className="text-xs opacity-80 mb-1">Подключен кошелек</p>
-                  <p className="text-sm font-mono">
-                    {walletAddress.slice(0, 8)}...{walletAddress.slice(-6)}
-                  </p>
-                </div>
-                <Button 
-                  onClick={handleWithdraw}
-                  disabled={isWithdrawing || userData.balance < MIN_WITHDRAWAL}
-                  variant="secondary"
-                  className="w-full touch-manipulation"
-                >
-                  {isWithdrawing ? (
-                    <>
-                      <Icon name="Loader2" className="w-4 h-4 mr-2 animate-spin" />
-                      Обработка...
-                    </>
-                  ) : (
-                    <>
-                      <Icon name="Send" className="w-4 h-4 mr-2" />
-                      Вывести {userData.balance.toFixed(6)} TON
-                    </>
-                  )}
-                </Button>
-                {userData.balance < MIN_WITHDRAWAL && (
-                  <p className="text-xs text-center opacity-80">
-                    Минимум для вывода: {MIN_WITHDRAWAL} TON
-                  </p>
-                )}
-              </div>
-            )}
+            <Button 
+              onClick={handleWithdraw}
+              variant="secondary"
+              className="w-full touch-manipulation"
+            >
+              <Icon name="Send" className="w-4 h-4 mr-2" />
+              Вывести средства
+            </Button>
           </Card>
-
-          {withdrawals.length > 0 && (
-            <div className="mb-6">
-              <h2 className="text-lg font-semibold mb-3">Выводы</h2>
-              <div className="space-y-2">
-                {withdrawals.map((withdrawal) => (
-                  <Card key={withdrawal.id} className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                          withdrawal.status === 'completed' ? 'bg-success/10' : 
-                          withdrawal.status === 'pending' ? 'bg-amber-500/10' : 'bg-destructive/10'
-                        }`}>
-                          <Icon 
-                            name={withdrawal.status === 'completed' ? 'CheckCircle2' : 
-                                  withdrawal.status === 'pending' ? 'Clock' : 'XCircle'} 
-                            className={`w-5 h-5 ${
-                              withdrawal.status === 'completed' ? 'text-success' : 
-                              withdrawal.status === 'pending' ? 'text-amber-500' : 'text-destructive'
-                            }`}
-                          />
-                        </div>
-                        <div>
-                          <p className="font-medium">Вывод на кошелек</p>
-                          <p className="text-xs text-muted-foreground">
-                            {withdrawal.wallet.slice(0, 8)}...{withdrawal.wallet.slice(-6)}
-                          </p>
-                          <p className="text-xs text-muted-foreground">{formatDate(withdrawal.created_at)}</p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-bold text-destructive">-{withdrawal.amount.toFixed(6)}</p>
-                        <p className="text-xs text-muted-foreground capitalize">{withdrawal.status}</p>
-                      </div>
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            </div>
-          )}
 
           <div className="mb-4">
             <h2 className="text-lg font-semibold mb-3">История операций</h2>
